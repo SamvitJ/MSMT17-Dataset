@@ -4,23 +4,25 @@ import pdb
 from itertools import groupby
 import operator as op
 import pprint
+import os
 import math
 
-NUM_PIDS = 7141
+NUM_PIDS = 1041
+NUM_CAMS = 15
 
-CAM_ID = 0
-PER_ID = 1
-FRM_ID = 2
+CAM_ID = 3
+PER_ID = 0
+FRM_ID = 4
 
 DIV_ONE = 108980
 DIV_TWO = 168260
 
 # Return string camera id for camera idx
 def cstr(i):
-	if i < 8:
-		return '%d' % i
+	if i < 15:
+		return '%2d' % i
 	else:
-		return 'x'
+		return ' x'
 
 def my_floor(x, base=5):
     return int(base * math.floor(float(x)/base))
@@ -28,9 +30,22 @@ def my_floor(x, base=5):
 def my_ceil(x, base=5):
     return int(base * math.ceil(float(x)/base))
 
+def process_line(x):
+	x = x.replace('_',' ').replace('/',' ').replace('.',' ')
+	x = x.split(" ")
+	del x[4]
+	del x[6]
+	if len(x) == 8:
+		del x[6]
+	return ' '.join(x)
 
-A = sio.loadmat('ground_truth/trainval')
-A = A['trainData']
+
+curr_dir = os.path.dirname(__file__)
+rel_path = 'list_train.txt'
+abs_path = os.path.join(curr_dir, rel_path)
+with open(abs_path) as f:
+	s = (process_line(x) for x in f)
+	A = np.loadtxt(s)
 
 print("Train data shape:")
 print(np.shape(A))
@@ -41,15 +56,6 @@ y_edges = range(1, NUM_PIDS + 1, 1)
 
 hist = np.histogram2d(A[:, CAM_ID], A[:, PER_ID], bins=(x_edges, y_edges))
 # print(hist)
-
-# frame offets (from http://vision.cs.duke.edu/DukeMTMC/details.html)
-cam_offsets = [5542, 3606, 27243, 31181, 0, 22401, 18967, 46765]
-num_cams = len(cam_offsets)
-
-# adjust frame #s
-for i in range(0, np.shape(A)[0]):
-	cam_id = (int)(A[i][CAM_ID]) - 1
-	A[i][FRM_ID] += cam_offsets[cam_id]
 
 # sort by frame # (camera id)
 A = A[np.lexsort((A[:, CAM_ID], A[:, FRM_ID],))]
@@ -86,18 +92,19 @@ pp = pprint.PrettyPrinter(indent=4)
 pp.pprint(trajs[:11])
 
 # compute camera matrix
-matrix = np.zeros((num_cams, num_cams + 1))
+matrix = np.zeros((NUM_CAMS, NUM_CAMS + 1))
 
 for i in range(0, len(people)):
 	for j in range(0, len(people[i])):
 		cam_1 = (int)(people[i][j]) - 1
 		if j == len(people[i]) - 1:
-			matrix[cam_1][num_cams] += 1
+			matrix[cam_1][NUM_CAMS] += 1
 			continue
 		cam_2 = (int)(people[i][j+1]) - 1
 		matrix[cam_1][cam_2] += 1
 
 print("Frequency matrix:")
+np.set_printoptions(formatter={'float': lambda x: "%03s" % "{0:3.0f}".format(x)})
 print(matrix)
 
 # build people list, II
@@ -125,18 +132,19 @@ print("Frac. frames in cam (overall):")
 print("%0.6f" % (sum(frames_in_cam) / sum(frames_total)))
 
 # compute camera matrix_t
-times = [0.1, 0.2, 0.5, 1.0, 2.0, 10.0, 90.0]
-fpm = 60 * 60
-matrix_t = np.zeros((len(times), num_cams, num_cams + 1))
+times = [0.1, 0.2, 0.5, 1.0, 2.0, 10.0, 180.0]
+fpm = 60
+fps = 1.
+matrix_t = np.zeros((len(times), NUM_CAMS, NUM_CAMS + 1))
 
-arrivals_t = [[[] for i in range(0, num_cams + 1)] for i in range(0, num_cams)]
+arrivals_t = [[[] for i in range(0, NUM_CAMS + 1)] for i in range(0, NUM_CAMS)]
 
 for i in range(0, len(people)):
 	for j in range(0, len(people[i])):
 		cam_1 = (int)(people[i][j][CAM_ID]) - 1
 		if j == (len(people[i]) - 1):
 			for idx, _ in enumerate(times):
-				matrix_t[idx][cam_1][num_cams] += 1
+				matrix_t[idx][cam_1][NUM_CAMS] += 1
 			continue
 		cam_2 = (int)(people[i][j+1][CAM_ID]) - 1
 		if cam_1 == cam_2:
@@ -146,7 +154,7 @@ for i in range(0, len(people)):
 		for idx, t in enumerate(times):
 			if frame_2 - frame_1 < (fpm * t):
 				matrix_t[idx][cam_1][cam_2] += 1
-		arrivals_t[cam_1][cam_2].append((frame_2 - frame_1) / 60.);
+		arrivals_t[cam_1][cam_2].append((frame_2 - frame_1) / fps);
 
 matrix_t_n = np.zeros(np.shape(matrix_t))
 
@@ -166,22 +174,22 @@ for i in range(0, len(matrix_t)):
 # print temporal progressions
 print('\nTraffic dest. distributions:')
 print('Times (min.): ', times)
-for i in range(0, num_cams):
+for i in range(0, NUM_CAMS):
 	print('')
-	for j in range(0, num_cams + 1):
+	for j in range(0, NUM_CAMS + 1):
 		if matrix_t_n[-1, i, j] >= 10.0:
 			print('cam %s -> %s: ' % (cstr(i), cstr(j)), matrix_t_n[:, i, j])
 
-sta_t = np.zeros((num_cams, num_cams + 1))
-end_t = np.zeros((num_cams, num_cams + 1))
+sta_t = np.zeros((NUM_CAMS, NUM_CAMS + 1))
+end_t = np.zeros((NUM_CAMS, NUM_CAMS + 1))
 
 # print arrival histograms
-bins = [0, 10, 20, 30, 60, 120, 500, 5400]
+bins = [0, 10, 20, 30, 60, 120, 600, 10800]
 print('\nArrival time histograms:')
 print('Times (sec.): ', bins)
-for i in range(0, num_cams):
+for i in range(0, NUM_CAMS):
 	print('')
-	for j in range(0, num_cams):
+	for j in range(0, NUM_CAMS):
 		if matrix_t_n[-1, i, j] >= 0.0:
 			hist, bins = np.histogram(sorted(arrivals_t[i][j]), bins=bins)
 			print('cam %s -> %s: ' % (cstr(i), cstr(j)), hist / (1.e-8 + sum(hist)))
@@ -205,7 +213,7 @@ for i in range(0, num_cams):
 					sta_t[i][j] = my_floor(sta)
 					end_t[i][j] = my_ceil(end)
 
-np.set_printoptions(formatter={'float': lambda x: "%06s" % "{0:2.0f}".format(x)})
+np.set_printoptions(formatter={'float': lambda x: "%03s" % "{0:2.0f}".format(x)})
 print('\nStart times:')
 print(sta_t)
 print('End times:')
