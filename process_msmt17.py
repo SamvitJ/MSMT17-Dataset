@@ -10,9 +10,10 @@ import math
 NUM_PIDS = 1041
 NUM_CAMS = 15
 
-CAM_ID = 3
 PER_ID = 0
-FRM_ID = 4
+CAM_ID = 3
+GRP_ID = 4
+FRM_ID = 5
 
 DIV_ONE = 108980
 DIV_TWO = 168260
@@ -30,13 +31,22 @@ def my_floor(x, base=5):
 def my_ceil(x, base=5):
     return int(base * math.ceil(float(x)/base))
 
+def encode(x):
+	if x == 'morning':
+		return 0
+	elif x == 'noon':
+		return 1
+	elif x == 'afternoon':
+		return 2
+
 def process_line(x):
 	x = x.replace('_',' ').replace('/',' ').replace('.',' ')
 	x = x.split(" ")
-	del x[4]
-	del x[6]
-	if len(x) == 8:
-		del x[6]
+	group = x[4]
+	x[4] = str(10*int(group[:4]) + encode(group[4:]))
+	del x[7]
+	if len(x) == 9:
+		del x[7]
 	return ' '.join(x)
 
 
@@ -142,12 +152,14 @@ arrivals_t = [[[] for i in range(0, NUM_CAMS + 1)] for i in range(0, NUM_CAMS)]
 for i in range(0, len(people)):
 	for j in range(0, len(people[i])):
 		cam_1 = (int)(people[i][j][CAM_ID]) - 1
+		grp_1 = (int)(people[i][j][GRP_ID]) - 1
 		if j == (len(people[i]) - 1):
 			for idx, _ in enumerate(times):
 				matrix_t[idx][cam_1][NUM_CAMS] += 1
 			continue
 		cam_2 = (int)(people[i][j+1][CAM_ID]) - 1
-		if cam_1 == cam_2:
+		grp_2 = (int)(people[i][j+1][GRP_ID]) - 1
+		if (cam_1 == cam_2) or (grp_1 != grp_2):
 			continue
 		frame_1 = people[i][j][FRM_ID]
 		frame_2 = people[i][j+1][FRM_ID]
